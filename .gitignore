@@ -1,0 +1,9 @@
+# This file lists all the files that are not tracked by git to save space in the git repo, 
+# if any of these files are changed at any point, they should be removed from the list and added to the repo
+# so that the changes are tracked.
+bible_translations/
+indexdir/
+static/
+index.json
+index.json.bak
+commentaries.sqlite

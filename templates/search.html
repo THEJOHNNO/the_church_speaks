@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Application</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        @media screen and (max-width: 480px) {
+            .chat-container {
+                width: 97vw !important;
+            }
+        }
+        .clear_button {
+            border-radius: 5px !important;
+            background-color: rgba(0, 0, 0, 0) !important;
+            color: black !important;
+            border: 1px solid black !important;
+            transition: all 0.3s ease;
+        }
+        .clear_button:hover {
+            background-color: black !important;
+            color: white !important;
+        }
+        .highlight {
+            background-color: yellow;
+        }
+        .chat-container {
+            max-width: 1120px;
+            min-width: 360px;
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 300px;
+            background: white;
+            border: 1px solid #ccc;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            max-height: 900px;
+            transition: max-height 0.3s;
+            resize: both; 
+            overflow: hidden;
+        }
+        .resize-handle {
+            width: 10px;
+            height: 10px;
+            background: rgba(0,0,0,0);
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: se-resize;
+        }
+        .chat-header {
+            background: #4a76a8;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
+            cursor: pointer;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+            gap: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-input {
+            display: flex;
+            border-top: 1px solid #ccc;
+            align-items: center;
+        }
+        .chat-input input {
+            flex-grow: 1;
+            border: none;
+            padding: 10px;
+            min-width: 200px !important;
+        }
+        .chat-input button {
+            background: #4a76a8;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-bottom-right-radius: 10px;
+        }
+        .qwefh9234fhibef {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .context-modal-content {
+            max-width: 100%;
+            max-height: calc(100% - 4rem);
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+        .wef4f34f {
+            overflow-y: scroll !important;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div id="app" class="max-w-3xl mx-auto p-4">
+        <form @submit.prevent="search" class="flex mb-4">
+            <input type="text" v-model="query" placeholder="Enter search query" class="flex-grow p-2 border border-gray-300 rounded-l-md">
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-r-md">Search</button>
+        </form>
+        <div v-if="this.bible.show === false" class="space-y-4">
+            <div v-for="result in results" :key="result.id" class="bg-white p-4 rounded-lg shadow cursor-pointer">
+                <h2 class="text-xl font-bold">{{ result.h1 }}</h2>
+                <p class="text-sm text-gray-600">{{ result.breadcrumb }}</p>
+                <p v-html="result.content_snippet"></p>
+                <div class="qwefh9234fhibef">
+                    <a v-if="scripture === false" href="#" @click.prevent="openDocument(result.file_path)" class="text-blue-500 underline">Read more</a>
+                    <button @click.prevent="openContextModal(result.file_path, result.id)" class="text-blue-500 underline mt-2">Open Context</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="this.bible.show === true" class="space-y-4">
+            <div @click=beforesendMessage() class="bg-white p-4 rounded-lg shadow cursor-pointer">
+                <h2 v-if="!this.bible.title" class="text-xl font-bold">{{`${this.bible.book} ${this.bible.chapter}:${this.bible.verse}`}}</h2>
+                <h2 v-if="this.bible.title" class="text-xl font-bold">{{this.bible.title}}</h2>
+                <p class="text-sm text-gray-600">{{this.bible.version}}</p>
+                <p v-if="!this.bible.multiVerseContext">{{this.bible.text}}</p>
+                <p v-if="this.bible.multiVerseContext" v-html = "this.bible.multiVerseContext"></p>
+            </div>
+        </div>
+        
+        <div v-if="showIframe" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+            <div class="relative bg-white rounded-lg shadow-lg overflow-hidden w-4/5 h-4/5">
+                <button @click="closeIframe" class="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full">Close</button>
+                <iframe :src="iframeSrc" class="w-full h-full" @load="highlightSearchText"></iframe>
+            </div>
+        </div>
+        <div v-if="showContextModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+            <div class="wef4f34f relative bg-white rounded-lg shadow-lg overflow-hidden w-4/5 h-4/5 p-4">
+                <button @click="closeContextModal" class="absolute top-2 right-2 bg-red-500 text-white px-3 py-1 rounded-full">Close</button>
+                <div class="flex justify-left items-center mb-4">
+                    <button v-if="scripture===false" @click="previousContext" class="bg-gray-200 text-gray-800 px-3 py-1 rounded-full">Previous</button>
+                    <button v-if="scripture===false" @click="nextContext" class="bg-gray-200 text-gray-800 px-3 py-1 rounded-full">Next</button>
+                </div>
+                <div class="mb-4">
+                    <h1 class="text-2xl font-bold">{{ currentH1Text }}</h1>
+                    <p class="text-sm text-gray-600">{{ currentBreadcrumbText }}</p>
+                </div>
+                <div v-html="highlightedContext" class="context-modal-content p-4 bg-gray-100 rounded-lg"></div>
+                <div v-if="scripture===false" class="mt-4">
+                    <input type="text" v-model="aiQuestion" placeholder="Ask AI about this document..." class="w-full p-2 border rounded-md">
+                    <button @click="askAI" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded-md">Ask AI</button>
+                    <div v-if="isLoading" style="min-width: 100px !important"><div class="loader"></div></div>
+                    <div v-if="aiResponse" class="mt-4 p-2 border-t">
+                        <strong>AI Response:</strong>
+                        <p>{{ aiResponse }}</p>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        
+        
+        <div ref="chatContainer" class="chat-container" :style="{ maxHeight: chatMinimized ? '50px' : '720px' }">
+            <div class="resize-handle" @mousedown="initResize"></div>
+            <div class="chat-header" @click="toggleChat">
+                Chat with AI
+            </div>
+            <div class="chat-messages" ref="chatMessages" v-if="!chatMinimized">
+                <div v-for="message in chatMessages" :key="message.id" :class="{'text-right': message.isUser}">
+                    <p :class="{'bg-gray-200': message.isUser, 'bg-blue-100': !message.isUser}" class="p-2 rounded-lg inline-block" v-html="message.text">
+                    </p>
+                </div>
+                
+            </div>
+            
+            <div class="chat-input" v-if="!chatMinimized">
+                <button class="clear_button" @click="clearCache">Clear</button>
+                <input type="text" v-model="chatInput" @keyup.enter="beforeChatsendMessage" placeholder="Type here...">
+                <button @click="beforeChatsendMessage">Send</button>
+                <div v-if="isLoading" class="loader"></div> <!-- Add this line -->
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                query: '',
+                results: [],
+                showIframe: false,
+                iframeSrc: '',
+                showContextModal: false,
+                contexts: [],
+                currentContextIndex: 0,
+                currentBreadcrumbText: '',
+                currentH1Text: '',
+                showChat: true,
+                chatMinimized: false,
+                chatInput: '',
+                chatMessages: [],
+                aiQuestion: '',
+                aiResponse: '',
+                aiQuestion: '',
+                aiResponse: '',
+                contextFilePath: '',
+                isLoading: false, // Add this line
+                scripture: false,
+                message: '',
+                clickVerse: false,
+                multiVerseIsTrue: false,
+                bible: {
+                    book: '',
+                    chapter: '0',
+                    verse: '0',
+                    text: '',
+                    show: false,
+                    title: '',
+                    multiVerseContext: '',
+                    version: ''
+                },
+                firstChapterDifferent: false
+                
+                
+
+            },
+            computed: {
+                highlightedContext() {
+                    const context = this.contexts[this.currentContextIndex] || '';
+                    const regex = new RegExp(`(${this.query})`, 'gi');
+                    return context.replace(regex, match => `<span class="highlight">${match}</span>`);
+                }
+            },
+            methods: {
+                saveToLocalStorage() {
+        localStorage.setItem('query', this.query);
+        localStorage.setItem('chatMessages', JSON.stringify(this.chatMessages));
+    },
+    clearCache() {
+        localStorage.clear();
+        window.location.reload();
+    },
+                initResize(event) {
+        event.preventDefault();
+        this.startX = event.clientX;
+        this.startY = event.clientY;
+        this.startWidth = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).width, 10);
+        this.startHeight = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).height, 10);
+        document.documentElement.addEventListener('mousemove', this.doResize, false);
+        document.documentElement.addEventListener('mouseup', this.stopResize, false);
+    },
+    scrollToBottom() {
+        this.$nextTick(() => {
+            const chatMessagesContainer = this.$refs.chatMessages;
+            if (chatMessagesContainer) {
+                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            }
+        });
+    },
+    doResize(event) {
+        const minWidth = 100;  // Minimum width of the container
+        const minHeight = 100; // Minimum height of the container
+
+        const newWidth = this.startWidth - (event.clientX - this.startX);
+        const newHeight = this.startHeight - (event.clientY - this.startY);
+
+        this.$refs.chatContainer.style.width = Math.max(newWidth, minWidth) + 'px';
+        this.$refs.chatContainer.style.height = Math.max(newHeight, minHeight) + 'px';
+    },
+    stopResize() {
+        document.documentElement.removeEventListener('mousemove', this.doResize, false);
+        document.documentElement.removeEventListener('mouseup', this.stopResize, false);
+    },
+                search() {
+                    fetch('/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: this.query }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error('Error:', data.error);
+                        } else {
+                            
+                            if (data.type === "bible") {
+                                this.bible.version = data.bible_version;
+                                if (data.results.length > 1){
+                                    console.log("bible longer")
+                                    let book_mapping = data.book_data;
+                                    this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === data.results[0].Book);
+                                    this.bible.show = true;
+                                    let first = data.results[0];
+                                    let last = data.results.slice(-1)[0];
+
+                                    this.multiVerseIsTrue = true;
+
+                                    if (first.Chapter != last.Chapter) {
+                                        
+                                        this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse} - ${this.bible.book} ${last.Chapter}:${last.Verse}`;
+                                        this.firstChapterDifferent = true;
+                                    } else {
+                                        this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse}-${last.Verse}`;
+                                        this.firstChapterDifferent = false;
+                                    }
+
+                                    let innerHTML = '';
+                                    data.results.forEach(result => {
+                                        innerHTML += `<strong>${result.Verse}</strong> ${result.Text} `;
+                                    });
+
+                                    this.bible.multiVerseContext = innerHTML.trim();
+  
+                                } else {
+                                    this.multiVerseIsTrue = false;
+                                    this.firstChapterDifferent = false;
+                                    console.log("bible shorter")
+                                    this.bible.title = '';
+                                    this.bible.multiVerseContext = '';
+                                    let book_mapping = data.book_data;
+                                    this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === data.results[0].Book);
+                                    this.bible.chapter = data.results[0].Chapter;
+                                    this.bible.verse = data.results[0].Verse;
+                                    this.bible.text = data.results[0].Text;
+                                    this.bible.show = true;
+                                }
+                                
+                            } else {
+                                console.log("non bible")
+                                this.results = data.results;
+                                this.bible.show = false;
+                                this.bible.title = '';
+                                this.bible.multiVerseContext = '';
+                            }
+                            
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                },
+                openDocument(filePath) {
+                    this.iframeSrc = `/static/${filePath}`;
+                    this.showIframe = true;
+                },
+                closeIframe() {
+                    this.showIframe = false;
+                    this.iframeSrc = '';
+                },
+                highlightSearchText() {
+                    const iframe = document.querySelector('iframe');
+                    const highlightText = () => {
+                        const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        const text = this.query.toLowerCase();
+
+                        function highlightInParagraphs(paragraphs) {
+                            paragraphs.forEach(p => {
+                                let innerHTML = p.innerHTML;
+                                const regex = new RegExp(`(${text})`, 'gi');
+                                p.innerHTML = innerHTML.replace(regex, match => `<span class="highlight">${match}</span>`);
+                            });
+                        }
+
+                        const paragraphs = innerDoc.querySelectorAll('p');
+                        highlightInParagraphs(paragraphs);
+                    };
+
+                    setTimeout(highlightText, 100);
+                },
+                openContextModal(filePath, id) {
+    const payload = this.scripture ? { id: id, query: this.query } : { file_path: filePath, query: this.query };
+
+    fetch('/context', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error:', data.error);
+        } else {
+            this.contexts = data.contexts;
+            this.currentContextIndex = 0;
+            this.currentBreadcrumbText = data.breadcrumb_text;
+            this.currentH1Text = data.h1_text;
+            this.aiResponse = ''; // Reset AI response
+            this.contextFilePath = filePath; // Set the file path or id for AI questions
+            this.showContextModal = true;
+        }
+    })
+    .catch(error => console.error('Error:', error));
+},
+closeContextModal() {
+                    this.showContextModal = false;
+                    this.contexts = [];
+                    this.currentContextIndex = 0;
+                    this.aiQuestion = '';
+                    this.aiResponse = '';
+                },
+                previousContext() {
+                    if (this.currentContextIndex > 0) {
+                        this.currentContextIndex--;
+                    }
+                },
+                nextContext() {
+                    if (this.currentContextIndex < this.contexts.length - 1) {
+                        this.currentContextIndex++;
+                    }
+                },
+                beforesendMessage() {
+                    console.log(this.multiVerseIsTrue)
+                    
+                    if (this.multiVerseIsTrue === false) {
+                        this.clickVerse = true; 
+                        this.sendMessage();
+                    } else if (this.multiVerseIsTrue === true){
+                    }
+                    
+                },
+                beforeChatsendMessage() {
+                    this.clickVerse = false;
+                    this.message = this.chatInput.trim();
+                    this.sendMessage();
+                },
+                sendMessage() {
+                    if (this.clickVerse) {
+                        this.message = `${this.bible.book} ${this.bible.chapter}:${this.bible.verse}`;
+                    } else {
+                        this.message = this.chatInput.trim();
+                    }
+
+                    if (this.message) {
+                        this.chatMessages.push({ id: Date.now(), text: this.message, isUser: true });
+                        this.chatInput = '';
+                        this.isLoading = true; // Start loading
+
+                        fetch('/generate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ prompt: this.message }),
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            this.isLoading = false; // Stop loading
+                            if (data.error) {
+                                console.error('Error:', data.error);
+                            } else {
+                                // Process response to render markdown
+                                let processedResponse = marked.parse(data.response);
+
+                                this.chatMessages.push({ id: Date.now() + 1, text: processedResponse, isUser: false });
+                                this.scrollToBottom();
+                            }
+                        })
+                        .catch(error => {
+                            this.isLoading = false; // Stop loading
+                            console.error('Error:', error);
+                        });
+                        this.scrollToBottom();
+                    }
+                },
+
+
+toggleChat() {
+                    this.chatMinimized = !this.chatMinimized;
+                },
+                askAI() {
+    const question = this.aiQuestion.trim();
+    if (question) {
+        this.isLoading = true; // Start loading
+        fetch('/ask_ai', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                file_path: this.contextFilePath,
+                question
+            }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            this.isLoading = false; // Stop loading
+            if (data.error) {
+                console.error('Error:', data.error);
+            } else {
+                this.aiResponse = data.response;
+                this.chatMessages.push({ id: Date.now(), text: `Q: ${question}`, isUser: true });
+                this.chatMessages.push({ id: Date.now() + 1, text: `A: ${this.aiResponse}`, isUser: false });
+            }
+        })
+        .catch(error => {
+            this.isLoading = false; // Stop loading
+            console.error('Error:', error);
+        });
+    }
+},
+
+
+            },
+            mounted() {
+    if (localStorage.getItem('query')) {
+        this.query = localStorage.getItem('query');
+    }
+    if (localStorage.getItem('chatMessages')) {
+        this.chatMessages = JSON.parse(localStorage.getItem('chatMessages'));
+    }
+    this.scrollToBottom();
+},
+            watch: {
+                query() {
+                    console.log("hey")
+                    if (this.query.includes(':')) {
+                        this.scripture = true;
+                    } else {
+                        this.scripture = false;
+                    }
+                    this.saveToLocalStorage();
+                },
+                chatMessages: {
+        handler() {
+            this.saveToLocalStorage();
+            this.scrollToBottom();
+        },
+        deep: true
+    }
+            }
+        });
+    </script>
+</body>
+</html>
