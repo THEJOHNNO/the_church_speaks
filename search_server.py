@@ -21,10 +21,6 @@ BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translation
 IX_PATH = "indexdir"
 ix = open_dir(IX_PATH)
 
-# Add a list of the available Bible versions
-BIBLE_VERSIONS = ['ESV', 'KJV', 'AMP', 'BSB', 'GEN', 'NASB']
-DEFAULT_BIBLE_VERSION = 'ESV' # This can be changed or maybe added as a UI configurable
-
 @app.route('/')
 def home():
     return send_from_directory('templates', 'search.html')
@@ -132,153 +128,82 @@ def search():
             cursor = conn.cursor()
 
             # Book name to ID mapping (case-insensitive)
+            # Create a case-insensitive book mapping
             book_mapping = {
-                "genesis": 0,
-                "exodus": 1,
-                "leviticus": 2,
-                "numbers": 3,
-                "deuteronomy": 4,
-                "joshua": 5,
-                "judges": 6,
-                "ruth": 7,
-                "1 samuel": 8,
-                "2 samuel": 9,
-                "1 kings": 10,
-                "2 kings": 11,
-                "1 chronicles": 12,
-                "2 chronicles": 13,
-                "ezra": 14,
-                "nehemiah": 15,
-                "esther": 16,
-                "job": 17,
-                "psalms": 18,
-                "proverbs": 19,
-                "ecclesiastes": 20,
-                "song of solomon": 21,
-                "isaiah": 22,
-                "jeremiah": 23,
-                "lamentations": 24,
-                "ezekiel": 25,
-                "daniel": 26,
-                "hosea": 27,
-                "joel": 28,
-                "amos": 29,
-                "obadiah": 30,
-                "jonah": 31,
-                "micah": 32,
-                "nahum": 33,
-                "habakkuk": 34,
-                "zephaniah": 35,
-                "haggai": 36,
-                "zechariah": 37,
-                "malachi": 38,
-                "matthew": 39,
-                "mark": 40,
-                "luke": 41,
-                "john": 42,
-                "acts": 43,
-                "romans": 44,
-                "1 corinthians": 45,
-                "2 corinthians": 46,
-                "galatians": 47,
-                "ephesians": 48,
-                "philippians": 49,
-                "colossians": 50,
-                "1 thessalonians": 51,
-                "2 thessalonians": 52,
-                "1 timothy": 53,
-                "2 timothy": 54,
-                "titus": 55,
-                "philemon": 56,
-                "hebrews": 57,
+                "Genesis": 0,
+                "Exodus": 1,
+                "Leviticus": 2,
+                "Numbers": 3,
+                "Deuteronomy": 4,
+                "Joshua": 5,
+                "Judges": 6,
+                "Ruth": 7,
+                "1 Samuel": 8,
+                "2 Samuel": 9,
+                "1 Kings": 10,
+                "2 Kings": 11,
+                "1 Chronicles": 12,
+                "2 Chronicles": 13,
+                "Ezra": 14,
+                "Nehemiah": 15,
+                "Esther": 16,
+                "Job": 17,
+                "Psalms": 18,
+                "Proverbs": 19,
+                "Ecclesiastes": 20,
+                "Song of Solomon": 21,
+                "Isaiah": 22,
+                "Jeremiah": 23,
+                "Lamentations": 24,
+                "Ezekiel": 25,
+                "Daniel": 26,
+                "Hosea": 27,
+                "Joel": 28,
+                "Amos": 29,
+                "Obadiah": 30,
+                "Jonah": 31,
+                "Micah": 32,
+                "Nahum": 33,
+                "Habakkuk": 34,
+                "Zephaniah": 35,
+                "Haggai": 36,
+                "Zechariah": 37,
+                "Malachi": 38,
+                "Matthew": 39,
+                "Mark": 40,
+                "Luke": 41,
+                "John": 42,
+                "Acts": 43,
+                "Romans": 44,
+                "1 Corinthians": 45,
+                "2 Corinthians": 46,
+                "Galatians": 47,
+                "Ephesians": 48,
+                "Philippians": 49,
+                "Colossians": 50,
+                "1 Thessalonians": 51,
+                "2 Thessalonians": 52,
+                "1 Timothy": 53,
+                "2 Timothy": 54,
+                "Titus": 55,
+                "Philemon": 56,
+                "Hebrews": 57,
                 "James": 58,
-                "1 peter": 59,
-                "2 peter": 60,
-                "1 john": 61,
-                "2 john": 62,
-                "3 john": 63,
-                "jude": 64,
-                "revelation": 65
-            }
-            
-            display_book_mapping = {
-                "genesis": "Genesis",
-                "exodus": "Exodus",
-                "leviticus": "Leviticus",
-                "numbers": "Numbers",
-                "deuteronomy": "Deuteronomy",
-                "joshua": "Joshua",
-                "judges": "Judges",
-                "ruth": "Ruth",
-                "1 samuel": "1 Samuel",
-                "2 samuel": "2 Samuel",
-                "1 kings": "1 Kings",
-                "2 kings": "2 Kings",
-                "1 chronicles": "1 Chronicles",
-                "2 chronicles": "2 Chronicles",
-                "ezra": "Ezra",
-                "nehemiah": "Nehemiah",
-                "esther": "Esther",
-                "job": "Job",
-                "psalms": "Psalms",
-                "proverbs": "Proverbs",
-                "ecclesiastes": "Ecclesiastes",
-                "song of solomon": "Song of Solomon",
-                "isaiah": "Isaiah",
-                "jeremiah": "Jeremiah",
-                "lamentations": "Lamentations",
-                "ezekiel": "Ezekiel",
-                "daniel": "Daniel",
-                "hosea": "Hosea",
-                "joel": "Joel",
-                "amos": "Amos",
-                "obadiah": "Obadiah",
-                "jonah": "Jonah",
-                "micah": "Micah",
-                "nahum": "Nahum",
-                "habakkuk": "Habakkuk",
-                "zephaniah": "Zephaniah",
-                "haggai": "Haggai",
-                "zechariah": "Zechariah",
-                "malachi": "Malachi",
-                "matthew": "Matthew",
-                "mark": "Mark",
-                "luke": "Luke",
-                "john": "John",
-                "acts": "Acts",
-                "romans": "Romans",
-                "1 corinthians": "1 Corinthians",
-                "2 corinthians": "2 Corinthians",
-                "galatians": "Galatians",
-                "ephesians": "Ephesians",
-                "philippians": "Philippians",
-                "colossians": "Colossians",
-                "1 thessalonians": "1 Thessalonians",
-                "2 thessalonians": "2 Thessalonians",
-                "1 timothy": "1 Timothy",
-                "2 timothy": "2 Timothy",
-                "titus": "Titus",
-                "philemon": "Philemon",
-                "hebrews": "Hebrews",
-                "james": "James",
-                "1 peter": "1 Peter",
-                "2 peter": "2 Peter",
-                "1 john": "1 John",
-                "2 john": "2 John",
-                "3 john": "3 John",
-                "jude": "Jude",
-                "revelation": "Revelation"
+                "1 Peter": 59,
+                "2 Peter": 60,
+                "1 John": 61,
+                "2 John": 62,
+                "3 John": 63,
+                "Jude": 64,
+                "Revelation": 65
             }
 
 
             def fetch_verses(book, chapter, start_verse, end_verse=None):
-                # Convert book name to lowercase
-                book_lower = book.lower()
-                book_number = book_mapping.get(book_lower)
+                book_number = book_mapping.get(book.capitalize())
                 if book_number is None:
                     logging.error(f"Book not found: {book}")
                     return []  # Invalid book name
-                
                 logging.debug(f"Fetching verses for book: {book_number}, chapter: {chapter}, verses: {start_verse} to {end_verse}")
                 if end_verse:
                     query = """
@@ -305,26 +230,20 @@ def search():
             # Parse the query
             pattern = re.compile(r'(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s(\d+):(\d+)(?:-(\d+))?')
 
-
-
-
-
-
-            matches = pattern.findall(query_str)
+            matches = pattern.findall(query_str.capitalize())
             logging.debug(f"Matches found: {matches}")
 
             for match in matches:
                 book_name, chapter, start_verse, end_verse = match
-                # Convert bookname to lower case
-                book_name = book_name.strip().lower()  # Clean up any extra spaces
+                book_name = book_name.strip()  # Clean up any extra spaces and convert to lowercase
                 end_verse = end_verse or start_verse  # Use start_verse if end_verse is not specified
 
                 # Mapping book name to a database identifier
-                book_id = book_mapping.get(book_name)
+                book_id = book_mapping.get(book_name.capitalize())
                 if book_id is None:
                     logging.error(f"Book not found: {book_name}")
                     continue  # Skip this match if the book is not found in the mapping
-
+                
                 # Fetching verses from the database
                 query = """
                     SELECT Book, Chapter, Versecount, Verse
@@ -344,14 +263,7 @@ def search():
                     })
 
             conn.close()
-            return jsonify({
-                "query": query_str, 
-                "results": results, 
-                "type": "bible", 
-                "book_data": book_mapping,
-                "display_book_data": display_book_mapping,  # Add this line
-                "bible_version": chosen_bible
-            })
+            return jsonify({"query": query_str, "results": results, "type": "bible", "book_data": book_mapping, "bible_version": chosen_bible})
         else:
             # search anything else except bible (newadvent)
             with ix.searcher() as searcher:
