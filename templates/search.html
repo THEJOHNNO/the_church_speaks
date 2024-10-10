@@ -142,11 +142,15 @@
 
         <div v-if="this.bible.show === true" class="space-y-4">
             <div @click=beforesendMessage() class="bg-white p-4 rounded-lg shadow cursor-pointer">
-                <h2 v-if="!this.bible.title" class="text-xl font-bold">{{`${this.bible.book} ${this.bible.chapter}:${this.bible.verse}`}}</h2>
-                <h2 v-if="this.bible.title" class="text-xl font-bold">{{this.bible.title}}</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <button @click.stop="previousVersion" class="px-2 py-1 bg-blue-500 text-white rounded">&larr;</button>
+                    <h2 v-if="!this.bible.title" class="text-xl font-bold">{{`${this.bible.book} ${this.bible.chapter}:${this.bible.verse}`}}</h2>
+                    <h2 v-if="this.bible.title" class="text-xl font-bold">{{this.bible.title}}</h2>
+                    <button @click.stop="nextVersion" class="px-2 py-1 bg-blue-500 text-white rounded">&rarr;</button>
+                </div>
                 <p class="text-sm text-gray-600">{{this.bible.version}}</p>
                 <p v-if="!this.bible.multiVerseContext">{{this.bible.text}}</p>
-                <p v-if="this.bible.multiVerseContext" v-html = "this.bible.multiVerseContext"></p>
+                <p v-if="this.bible.multiVerseContext" v-html="this.bible.multiVerseContext"></p>
             </div>
         </div>
         
@@ -242,7 +246,9 @@
                     multiVerseContext: '',
                     version: ''
                 },
-                firstChapterDifferent: false
+                firstChapterDifferent: false,
+                availableVersions: [],
+                currentVersionIndex: 0,
                 
                 
 
@@ -310,6 +316,8 @@
                             
                             if (data.type === "bible") {
                                 this.bible.version = data.bible_version;
+                                this.availableVersions = data.available_versions;
+                                this.currentVersionIndex = this.availableVersions.indexOf(data.bible_version);
                                 if (data.results.length > 1){
                                     console.log("bible longer")
                                     let book_mapping = data.book_data;
@@ -523,6 +531,19 @@ toggleChat() {
         });
     }
 },
+nextVersion() {
+    this.currentVersionIndex = (this.currentVersionIndex + 1) % this.availableVersions.length;
+    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
+},
+previousVersion() {
+    this.currentVersionIndex = (this.currentVersionIndex - 1 + this.availableVersions.length) % this.availableVersions.length;
+    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
+},
+switchVersion(version) {
+    const currentQuery = this.query.replace(/\b(kjv|esv|amp|bsb|gen|nasb)\b/gi, '').trim();
+    this.query = `${currentQuery} ${version}`;
+    this.search();
+}
 
 
             },

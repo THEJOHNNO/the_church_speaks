@@ -101,27 +101,34 @@ def search():
 
             conn.close()
 
-        if ':' in query_str and any(version in query_str.lower() for version in ['esv', 'kjv', 'amp', 'bsb', 'gen', 'nasb']):
+        if ':' in query_str:
             query_str_lower = query_str.lower()
             chosen_bible = 'ESV'
-            if 'esv' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'ESV.db')
-                chosen_bible = 'ESV'
-            elif 'kjv' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'KJV.db')
-                chosen_bible = 'KJV'
-            elif 'amp' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'AMP.db')
-                chosen_bible = 'AMP'
-            elif 'bsb' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'BSB.db')
-                chosen_bible = 'BSB'
-            elif 'gen' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'GEN.db')
-                chosen_bible = 'GEN'
-            elif 'nasb' in query_str_lower:
-                BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'NASB.db')
-                chosen_bible = 'NASB'
+            all_versions = ['ESV', 'KJV', 'AMP', 'BSB', 'GEN', 'NASB']
+            
+            for version in all_versions:
+                if version.lower() in query_str_lower:
+                    chosen_bible = version
+                    break
+            
+            # if 'esv' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'ESV.db')
+            #     chosen_bible = 'ESV'
+            # elif 'kjv' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'KJV.db')
+            #     chosen_bible = 'KJV'
+            # elif 'amp' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'AMP.db')
+            #     chosen_bible = 'AMP'
+            # elif 'bsb' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'BSB.db')
+            #     chosen_bible = 'BSB'
+            # elif 'gen' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'GEN.db')
+            #     chosen_bible = 'GEN'
+            # elif 'nasb' in query_str_lower:
+            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'NASB.db')
+            #     chosen_bible = 'NASB'
 
             # Search in the Bible database
             conn = sqlite3.connect(BIBLE_DATABASE_PATH)
@@ -232,29 +239,35 @@ def search():
 
             matches = pattern.findall(query_str.capitalize())
             logging.debug(f"Matches found: {matches}")
+            
+            if matches:
+                book_name, chapter, start_verse, end_verse = matches[0]
+                book_name = book_name.strip()
 
-            for match in matches:
-                book_name, chapter, start_verse, end_verse = match
-                book_name = book_name.strip()  # Clean up any extra spaces and convert to lowercase
-                end_verse = end_verse or start_verse  # Use start_verse if end_verse is not specified
+                # Fetch verses for all versions
+                all_results = {}
+                for version in all_versions:
+                    db_path = os.path.join(os.path.dirname(__file__), f'bible_translations/{version}.db')
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    
+                    book_id = book_mapping.get(book_name.capitalize())
+                    if book_id is not None:
+                        end_verse = end_verse or start_verse
+                        query = """
+                            SELECT Book, Chapter, Versecount, Verse
+                            FROM bible
+                            WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
+                        """
+                        cursor.execute(query, (book_id, chapter, start_verse, end_verse))
+                        fetched_verses = cursor.fetchall()
+                        all_results[version] = fetched_verses
+                    
+                    conn.close()
 
-                # Mapping book name to a database identifier
-                book_id = book_mapping.get(book_name.capitalize())
-                if book_id is None:
-                    logging.error(f"Book not found: {book_name}")
-                    continue  # Skip this match if the book is not found in the mapping
-                
-                # Fetching verses from the database
-                query = """
-                    SELECT Book, Chapter, Versecount, Verse
-                    FROM bible
-                    WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
-                """
-                params = (book_id, chapter, start_verse, end_verse)
-                cursor.execute(query, params)
-                fetched_verses = cursor.fetchall()
-
-                for verse in fetched_verses:
+                # Process the results
+                current_version_results = all_results[chosen_bible]
+                for verse in current_version_results:
                     results.append({
                         "Book": verse[0],
                         "Chapter": verse[1],
@@ -262,8 +275,46 @@ def search():
                         "Text": verse[3]
                     })
 
-            conn.close()
-            return jsonify({"query": query_str, "results": results, "type": "bible", "book_data": book_mapping, "bible_version": chosen_bible})
+                return jsonify({
+                    "query": query_str,
+                    "results": results,
+                    "type": "bible",
+                    "book_data": book_mapping,
+                    "bible_version": chosen_bible,
+                    "available_versions": all_versions
+                })
+
+            # for match in matches:
+            #     book_name, chapter, start_verse, end_verse = match
+            #     book_name = book_name.strip()  # Clean up any extra spaces and convert to lowercase
+            #     end_verse = end_verse or start_verse  # Use start_verse if end_verse is not specified
+
+            #     # Mapping book name to a database identifier
+            #     book_id = book_mapping.get(book_name.capitalize())
+            #     if book_id is None:
+            #         logging.error(f"Book not found: {book_name}")
+            #         continue  # Skip this match if the book is not found in the mapping
+                
+            #     # Fetching verses from the database
+            #     query = """
+            #         SELECT Book, Chapter, Versecount, Verse
+            #         FROM bible
+            #         WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
+            #     """
+            #     params = (book_id, chapter, start_verse, end_verse)
+            #     cursor.execute(query, params)
+            #     fetched_verses = cursor.fetchall()
+
+            #     for verse in fetched_verses:
+            #         results.append({
+            #             "Book": verse[0],
+            #             "Chapter": verse[1],
+            #             "Verse": verse[2],
+            #             "Text": verse[3]
+            #         })
+
+            # conn.close()
+            # return jsonify({"query": query_str, "results": results, "type": "bible", "book_data": book_mapping, "bible_version": chosen_bible})
         else:
             # search anything else except bible (newadvent)
             with ix.searcher() as searcher:
