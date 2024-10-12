@@ -128,7 +128,7 @@
             <input type="text" v-model="query" placeholder="Enter search query" class="flex-grow p-2 border border-gray-300 rounded-l-md">
             <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-r-md">Search</button>
         </form>
-        <div v-if="this.bible.show === false" class="space-y-4">
+        <div v-if="!this.bible.show" class="space-y-4">
             <div v-for="result in results" :key="result.id" class="bg-white p-4 rounded-lg shadow cursor-pointer">
                 <h2 class="text-xl font-bold">{{ result.h1 }}</h2>
                 <p class="text-sm text-gray-600">{{ result.breadcrumb }}</p>
@@ -140,8 +140,9 @@
             </div>
         </div>
 
-        <div v-if="this.bible.show === true" class="space-y-4">
-            <div @click=beforesendMessage() class="bg-white p-4 rounded-lg shadow cursor-pointer">
+        <div v-if="this.bible.show" class="space-y-4">
+            <!-- Bible verse result -->
+            <div @click="beforesendMessage" class="bg-white p-4 rounded-lg shadow cursor-pointer">
                 <div class="flex justify-between items-center mb-2">
                     <button @click.stop="previousVersion" class="px-2 py-1 bg-blue-500 text-white rounded">&larr;</button>
                     <h2 v-if="!this.bible.title" class="text-xl font-bold">{{`${this.bible.book} ${this.bible.chapter}:${this.bible.verse}`}}</h2>
@@ -151,6 +152,28 @@
                 <p class="text-sm text-gray-600">{{this.bible.version}}</p>
                 <p v-if="!this.bible.multiVerseContext">{{this.bible.text}}</p>
                 <p v-if="this.bible.multiVerseContext" v-html="this.bible.multiVerseContext"></p>
+            </div>
+        
+            <!-- Commentary results -->
+            <div v-for="result in commentaryResults" :key="result.id" class="bg-white p-4 rounded-lg shadow cursor-pointer">
+                <h2 class="text-xl font-bold">{{ result.h1 }}</h2>
+                <p class="text-sm text-gray-600">{{ result.breadcrumb }}</p>
+                <p v-html="result.content_snippet"></p>
+                <div class="qwefh9234fhibef">
+                    <a v-if="scripture === false" href="#" @click.prevent="openDocument(result.file_path)" class="text-blue-500 underline">Read more</a>
+                    <button @click.prevent="openContextModal(result.file_path, result.id)" class="text-blue-500 underline mt-2">Open Context</button>
+                </div>
+            </div>
+
+            <!-- Other results -->
+            <div v-for="result in otherResults" :key="result.id" class="bg-white p-4 rounded-lg shadow cursor-pointer">
+                <h2 class="text-xl font-bold">{{ result.h1 }}</h2>
+                <p class="text-sm text-gray-600">{{ result.breadcrumb }}</p>
+                <p v-html="result.content_snippet"></p>
+                <div class="qwefh9234fhibef">
+                    <a v-if="scripture === false" href="#" @click.prevent="openDocument(result.file_path)" class="text-blue-500 underline">Read more</a>
+                    <button @click.prevent="openContextModal(result.file_path, result.id)" class="text-blue-500 underline mt-2">Open Context</button>
+                </div>
             </div>
         </div>
         
@@ -223,7 +246,7 @@
                 currentBreadcrumbText: '',
                 currentH1Text: '',
                 showChat: true,
-                chatMinimized: false,
+                chatMinimized: true,
                 chatInput: '',
                 chatMessages: [],
                 aiQuestion: '',
@@ -249,6 +272,7 @@
                 firstChapterDifferent: false,
                 availableVersions: [],
                 currentVersionIndex: 0,
+                commentaryResults: [],
                 
                 
 
@@ -300,106 +324,125 @@
         document.documentElement.removeEventListener('mousemove', this.doResize, false);
         document.documentElement.removeEventListener('mouseup', this.stopResize, false);
     },
-                search() {
-                    fetch('/search', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ query: this.query }),
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            console.error('Error:', data.error);
-                        } else {
-                            
-                            if (data.type === "bible") {
-                                this.bible.version = data.bible_version;
-                                this.availableVersions = data.available_versions;
-                                this.currentVersionIndex = this.availableVersions.indexOf(data.bible_version);
-                                if (data.results.length > 1){
-                                    console.log("bible longer")
-                                    let book_mapping = data.book_data;
-                                    this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === data.results[0].Book);
-                                    this.bible.show = true;
-                                    let first = data.results[0];
-                                    let last = data.results.slice(-1)[0];
+    search() {
+        fetch('/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: this.query }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error:', data.error);
+            } else {
+                if (data.bible_data) {
+                    console.log("bible data received");
+                    this.handleBibleData(data.bible_data);
 
-                                    this.multiVerseIsTrue = true;
+                    // Handle commentary results if available
+                    if (data.commentary_results.length > 0) {
+                        console.log("commentary results received");
+                        this.commentaryResults = data.commentary_results;
+                    } else {
+                        this.commentaryResults = [];
+                    }
+                    
+                    if (data.other_results.length > 0) {
+                        console.log("other results received");
+                        this.otherResults = data.other_results;
+                    } else {
+                        this.otherResults = [];
+                    }
+                } else {
+                    // Handle non-Bible search results
+                    console.log("no bible data");
+                    this.results = data.results;
+                    this.bible.show = false;
+                    this.bible.title = '';
+                    this.bible.multiVerseContext = '';
+                    this.commentaryResults = [];
+                }
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    },
+    handleBibleData(bibleData) {
+        this.bible.version = bibleData.bible_version;
+        this.availableVersions = bibleData.available_versions;
+        this.currentVersionIndex = this.availableVersions.indexOf(bibleData.bible_version);
 
-                                    if (first.Chapter != last.Chapter) {
-                                        
-                                        this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse} - ${this.bible.book} ${last.Chapter}:${last.Verse}`;
-                                        this.firstChapterDifferent = true;
-                                    } else {
-                                        this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse}-${last.Verse}`;
-                                        this.firstChapterDifferent = false;
-                                    }
+        if (bibleData.results.length > 1){
+            console.log("bible longer")
+            let book_mapping = bibleData.book_data;
+            this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
+            this.bible.show = true;
+            let first = bibleData.results[0];
+            let last = bibleData.results.slice(-1)[0];
 
-                                    let innerHTML = '';
-                                    data.results.forEach(result => {
-                                        innerHTML += `<strong>${result.Verse}</strong> ${result.Text} `;
-                                    });
+            this.multiVerseIsTrue = true;
 
-                                    this.bible.multiVerseContext = innerHTML.trim();
-  
-                                } else {
-                                    this.multiVerseIsTrue = false;
-                                    this.firstChapterDifferent = false;
-                                    console.log("bible shorter")
-                                    this.bible.title = '';
-                                    this.bible.multiVerseContext = '';
-                                    let book_mapping = data.book_data;
-                                    this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === data.results[0].Book);
-                                    this.bible.chapter = data.results[0].Chapter;
-                                    this.bible.verse = data.results[0].Verse;
-                                    this.bible.text = data.results[0].Text;
-                                    this.bible.show = true;
-                                }
-                                
-                            } else {
-                                console.log("non bible")
-                                this.results = data.results;
-                                this.bible.show = false;
-                                this.bible.title = '';
-                                this.bible.multiVerseContext = '';
-                            }
-                            
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-                },
-                openDocument(filePath) {
-                    this.iframeSrc = `/static/${filePath}`;
-                    this.showIframe = true;
-                },
-                closeIframe() {
-                    this.showIframe = false;
-                    this.iframeSrc = '';
-                },
-                highlightSearchText() {
-                    const iframe = document.querySelector('iframe');
-                    const highlightText = () => {
-                        const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
-                        const text = this.query.toLowerCase();
+            if (first.Chapter != last.Chapter) {
+                this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse} - ${this.bible.book} ${last.Chapter}:${last.Verse}`;
+                this.firstChapterDifferent = true;
+            } else {
+                this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse}-${last.Verse}`;
+                this.firstChapterDifferent = false;
+            }
 
-                        function highlightInParagraphs(paragraphs) {
-                            paragraphs.forEach(p => {
-                                let innerHTML = p.innerHTML;
-                                const regex = new RegExp(`(${text})`, 'gi');
-                                p.innerHTML = innerHTML.replace(regex, match => `<span class="highlight">${match}</span>`);
-                            });
-                        }
+            let innerHTML = '';
+            bibleData.results.forEach(result => {
+                innerHTML += `<strong>${result.Verse}</strong> ${result.Text} `;
+            });
 
-                        const paragraphs = innerDoc.querySelectorAll('p');
-                        highlightInParagraphs(paragraphs);
-                    };
+            this.bible.multiVerseContext = innerHTML.trim();
 
-                    setTimeout(highlightText, 100);
-                },
-                openContextModal(filePath, id) {
-    const payload = this.scripture ? { id: id, query: this.query } : { file_path: filePath, query: this.query };
+        } else {
+            this.multiVerseIsTrue = false;
+            this.firstChapterDifferent = false;
+            console.log("bible shorter")
+            this.bible.title = '';
+            this.bible.multiVerseContext = '';
+            let book_mapping = bibleData.book_data;
+            this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
+            this.bible.chapter = bibleData.results[0].Chapter;
+            this.bible.verse = bibleData.results[0].Verse;
+            this.bible.text = bibleData.results[0].Text;
+            this.bible.show = true;
+        }
+        this.bible.show = true;
+    },
+    openDocument(filePath) {
+        this.iframeSrc = `/static/${filePath}`;
+        this.showIframe = true;
+    },
+    closeIframe() {
+        this.showIframe = false;
+        this.iframeSrc = '';
+    },
+    highlightSearchText() {
+        const iframe = document.querySelector('iframe');
+        const highlightText = () => {
+            const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+            const text = this.query.toLowerCase();
+
+            function highlightInParagraphs(paragraphs) {
+                paragraphs.forEach(p => {
+                    let innerHTML = p.innerHTML;
+                    const regex = new RegExp(`(${text})`, 'gi');
+                    p.innerHTML = innerHTML.replace(regex, match => `<span class="highlight">${match}</span>`);
+                });
+            }
+
+            const paragraphs = innerDoc.querySelectorAll('p');
+            highlightInParagraphs(paragraphs);
+        };
+
+        setTimeout(highlightText, 100);
+    },
+    openContextModal(filePath, id) {
+        const payload = this.scripture ? { id: id, query: this.query } : { file_path: filePath, query: this.query };
 
     fetch('/context', {
         method: 'POST',
@@ -558,7 +601,6 @@ switchVersion(version) {
 },
             watch: {
                 query() {
-                    console.log("hey")
                     if (this.query.includes(':')) {
                         this.scripture = true;
                     } else {

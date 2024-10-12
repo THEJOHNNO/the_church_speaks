@@ -21,6 +21,77 @@ BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translation
 IX_PATH = "indexdir"
 ix = open_dir(IX_PATH)
 
+# Book name to ID mapping (case-insensitive)
+# Create a case-insensitive book mapping
+book_mapping = {
+    "Genesis": 0,
+    "Exodus": 1,
+    "Leviticus": 2,
+    "Numbers": 3,
+    "Deuteronomy": 4,
+    "Joshua": 5,
+    "Judges": 6,
+    "Ruth": 7,
+    "1 Samuel": 8,
+    "2 Samuel": 9,
+    "1 Kings": 10,
+    "2 Kings": 11,
+    "1 Chronicles": 12,
+    "2 Chronicles": 13,
+    "Ezra": 14,
+    "Nehemiah": 15,
+    "Esther": 16,
+    "Job": 17,
+    "Psalms": 18,
+    "Proverbs": 19,
+    "Ecclesiastes": 20,
+    "Song of Solomon": 21,
+    "Isaiah": 22,
+    "Jeremiah": 23,
+    "Lamentations": 24,
+    "Ezekiel": 25,
+    "Daniel": 26,
+    "Hosea": 27,
+    "Joel": 28,
+    "Amos": 29,
+    "Obadiah": 30,
+    "Jonah": 31,
+    "Micah": 32,
+    "Nahum": 33,
+    "Habakkuk": 34,
+    "Zephaniah": 35,
+    "Haggai": 36,
+    "Zechariah": 37,
+    "Malachi": 38,
+    "Matthew": 39,
+    "Mark": 40,
+    "Luke": 41,
+    "John": 42,
+    "Acts": 43,
+    "Romans": 44,
+    "1 Corinthians": 45,
+    "2 Corinthians": 46,
+    "Galatians": 47,
+    "Ephesians": 48,
+    "Philippians": 49,
+    "Colossians": 50,
+    "1 Thessalonians": 51,
+    "2 Thessalonians": 52,
+    "1 Timothy": 53,
+    "2 Timothy": 54,
+    "Titus": 55,
+    "Philemon": 56,
+    "Hebrews": 57,
+    "James": 58,
+    "1 Peter": 59,
+    "2 Peter": 60,
+    "1 John": 61,
+    "2 John": 62,
+    "3 John": 63,
+    "Jude": 64,
+    "Revelation": 65
+}
+
 @app.route('/')
 def home():
     return send_from_directory('templates', 'search.html')
@@ -52,6 +123,149 @@ def inspect_table():
         return jsonify({"error": str(e)}), 500
 
 
+def fetch_bible_verses(query, conn, book_mapping, results):
+    query = query.lower()
+    match_found = False
+    chosen_bible = 'ESV'
+    all_versions = ['ESV', 'KJV', 'AMP', 'BSB', 'GEN', 'NASB']
+    
+    for version in all_versions:
+        if version.lower() in query:
+            chosen_bible = version
+            break
+        
+    cursor = conn.cursor()
+    pattern = re.compile(r'(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s(\d+):(\d+)(?:-(\d+))?')
+
+    matches = pattern.findall(query.capitalize())
+    logging.debug(f"Matches found: {matches}")
+    
+    if matches:
+        match_found = True
+        book_name, chapter, start_verse, end_verse = matches[0]
+        book_name = book_name.strip()
+
+        # Fetch verses for all versions
+        all_results = {}
+        for version in all_versions:
+            db_path = os.path.join(os.path.dirname(__file__), f'bible_translations/{version}.db')
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            book_id = book_mapping.get(book_name.capitalize())
+            if book_id is not None:
+                end_verse = end_verse or start_verse
+                query = """
+                    SELECT Book, Chapter, Versecount, Verse
+                    FROM bible
+                    WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
+                """
+                cursor.execute(query, (book_id, chapter, start_verse, end_verse))
+                fetched_verses = cursor.fetchall()
+                all_results[version] = fetched_verses
+            
+            conn.close()
+
+        # Process the results
+        current_version_results = all_results[chosen_bible]
+        for verse in current_version_results:
+            results.append({
+                "Book": verse[0],
+                "Chapter": verse[1],
+                "Verse": verse[2],
+                "Text": verse[3]
+            })
+        return query, chosen_bible, all_versions, match_found
+
+def fetch_commentary_results(conn, query_str):
+    commentary_conn = conn
+    commentary_cursor = commentary_conn.cursor()
+    comm_query = query_str.capitalize()
+    commentary_results = []
+    logging.debug(f"Commentary query: {comm_query}")
+
+    # Exact match
+    commentary_cursor.execute("""
+        SELECT id, file_name, txt, father_name, source_title, source_url 
+        FROM commentary 
+        WHERE txt = ?
+        LIMIT 20
+    """, (comm_query,))
+    exact_rows = commentary_cursor.fetchall()
+
+    # Non-exact match
+    commentary_cursor.execute("""
+        SELECT id, file_name, txt, father_name, source_title, source_url 
+        FROM commentary 
+        WHERE txt LIKE ?
+        LIMIT 20
+    """, ('%' + comm_query + '%',))
+    non_exact_rows = commentary_cursor.fetchall()
+
+    # Process rows
+    rows = exact_rows + non_exact_rows
+    if (len(rows) > 0):
+        print("Found rows")
+    else:
+        print("No rows found")
+        
+    for row in rows:
+        id, file_name, txt, father_name, source_title, source_url = row
+        breadcrumb = f"{source_title}"
+        commentary_results.append({
+            "id": id,  # Include ID in the result
+            "file_path": file_name,
+            "content_snippet": txt[:700] + "...",  # Show first 700 characters as snippet
+            "h1": father_name,
+            "breadcrumb": breadcrumb
+        })
+
+    commentary_conn.close()
+    return commentary_results
+
+def fetch_other_results(query_str):
+    results = []
+    with ix.searcher() as searcher:
+        # Split the query into terms, respecting quoted phrases
+        exact_terms = []
+        non_exact_terms = []
+
+        for term in query_str.split():
+            if term.startswith('"') and term.endswith('"'):
+                exact_terms.append(term.strip('"'))
+            else:
+                non_exact_terms.append(term)
+
+        # Create exact match queries
+        exact_queries = [Term("content", term) for term in exact_terms]
+        
+        # Create a query parser for non-exact terms
+        parser = QueryParser("content", ix.schema)
+        combined_non_exact_query = parser.parse(" ".join(non_exact_terms))
+
+        # Combine all queries
+        combined_query = Or(exact_queries + [combined_non_exact_query])
+
+        # Search for the combined query
+        hits = searcher.search(combined_query, limit=20)
+        for hit in hits:
+            relative_path = hit['file_path']
+            fixed_path = relative_path.replace('\\', '/')
+
+            # Extract h1 and breadcrumb from the file
+            with open(f'static/{fixed_path}', 'r', encoding='utf-8') as file:
+                content = file.read()
+                soup = BeautifulSoup(content, 'html.parser')
+                h1 = soup.find('h1').get_text(strip=True) if soup.find('h1') else 'No title'
+                breadcrumb = ' > '.join([crumb.get_text(strip=True) for crumb in soup.select('.breadcrumbs a')])
+
+            results.append({
+                "file_path": fixed_path,
+                "content_snippet": hit.highlights("content"),
+                "h1": h1,
+                "breadcrumb": breadcrumb
+            })
+    return results
 
 # main search functionality
 @app.route('/search', methods=['POST'])
@@ -62,259 +276,35 @@ def search():
         query_str = data.get('query', '')
         logging.debug(f"Query string: {query_str}")
         results = []
+        commentary_results = []
+        other_results = []
+        commentary_conn = sqlite3.connect(DATABASE_PATH)
 
         if ':' in query_str:
-            # Search in the SQLite database
-            conn = sqlite3.connect(DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Exact match
-            cursor.execute("""
-                SELECT id, file_name, txt, father_name, source_title, source_url 
-                FROM commentary 
-                WHERE txt = ?
-                LIMIT 20
-            """, (query_str,))
-            exact_rows = cursor.fetchall()
-
-            # Non-exact match
-            cursor.execute("""
-                SELECT id, file_name, txt, father_name, source_title, source_url 
-                FROM commentary 
-                WHERE txt LIKE ?
-                LIMIT 20
-            """, ('%' + query_str + '%',))
-            non_exact_rows = cursor.fetchall()
-
-            # Process rows
-            rows = exact_rows + non_exact_rows
-            for row in rows:
-                id, file_name, txt, father_name, source_title, source_url = row
-                breadcrumb = f"{source_title}"
-                results.append({
-                    "id": id,  # Include ID in the result
-                    "file_path": file_name,
-                    "content_snippet": txt[:700] + "...",  # Show first 700 characters as snippet
-                    "h1": father_name,
-                    "breadcrumb": breadcrumb
-                })
-
-            conn.close()
-
-        if ':' in query_str:
-            query_str_lower = query_str.lower()
-            chosen_bible = 'ESV'
-            all_versions = ['ESV', 'KJV', 'AMP', 'BSB', 'GEN', 'NASB']
+            if not any(version in query_str.lower() for version in ['esv', 'kjv', 'amp', 'bsb', 'gen', 'nasb']):
+                # If no version specified, add default version (ESV)
+                bible_query = f"{query_str} ESV"
+                commentary_results = fetch_commentary_results(commentary_conn, query_str)
+                other_results = fetch_other_results(query_str)
+            else:
+                bible_query = query_str
             
-            for version in all_versions:
-                if version.lower() in query_str_lower:
-                    chosen_bible = version
-                    break
+            bible_results = fetch_bible_verses(bible_query, sqlite3.connect(BIBLE_DATABASE_PATH), book_mapping, results)
             
-            # if 'esv' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'ESV.db')
-            #     chosen_bible = 'ESV'
-            # elif 'kjv' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'KJV.db')
-            #     chosen_bible = 'KJV'
-            # elif 'amp' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'AMP.db')
-            #     chosen_bible = 'AMP'
-            # elif 'bsb' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'BSB.db')
-            #     chosen_bible = 'BSB'
-            # elif 'gen' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'GEN.db')
-            #     chosen_bible = 'GEN'
-            # elif 'nasb' in query_str_lower:
-            #     BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations', 'NASB.db')
-            #     chosen_bible = 'NASB'
-
-            # Search in the Bible database
-            conn = sqlite3.connect(BIBLE_DATABASE_PATH)
-            cursor = conn.cursor()
-
-            # Book name to ID mapping (case-insensitive)
-            # Create a case-insensitive book mapping
-            book_mapping = {
-                "Genesis": 0,
-                "Exodus": 1,
-                "Leviticus": 2,
-                "Numbers": 3,
-                "Deuteronomy": 4,
-                "Joshua": 5,
-                "Judges": 6,
-                "Ruth": 7,
-                "1 Samuel": 8,
-                "2 Samuel": 9,
-                "1 Kings": 10,
-                "2 Kings": 11,
-                "1 Chronicles": 12,
-                "2 Chronicles": 13,
-                "Ezra": 14,
-                "Nehemiah": 15,
-                "Esther": 16,
-                "Job": 17,
-                "Psalms": 18,
-                "Proverbs": 19,
-                "Ecclesiastes": 20,
-                "Song of Solomon": 21,
-                "Isaiah": 22,
-                "Jeremiah": 23,
-                "Lamentations": 24,
-                "Ezekiel": 25,
-                "Daniel": 26,
-                "Hosea": 27,
-                "Joel": 28,
-                "Amos": 29,
-                "Obadiah": 30,
-                "Jonah": 31,
-                "Micah": 32,
-                "Nahum": 33,
-                "Habakkuk": 34,
-                "Zephaniah": 35,
-                "Haggai": 36,
-                "Zechariah": 37,
-                "Malachi": 38,
-                "Matthew": 39,
-                "Mark": 40,
-                "Luke": 41,
-                "John": 42,
-                "Acts": 43,
-                "Romans": 44,
-                "1 Corinthians": 45,
-                "2 Corinthians": 46,
-                "Galatians": 47,
-                "Ephesians": 48,
-                "Philippians": 49,
-                "Colossians": 50,
-                "1 Thessalonians": 51,
-                "2 Thessalonians": 52,
-                "1 Timothy": 53,
-                "2 Timothy": 54,
-                "Titus": 55,
-                "Philemon": 56,
-                "Hebrews": 57,
-                "James": 58,
-                "1 Peter": 59,
-                "2 Peter": 60,
-                "1 John": 61,
-                "2 John": 62,
-                "3 John": 63,
-                "Jude": 64,
-                "Revelation": 65
-            }
-
-
-            def fetch_verses(book, chapter, start_verse, end_verse=None):
-                book_number = book_mapping.get(book.capitalize())
-                if book_number is None:
-                    logging.error(f"Book not found: {book}")
-                    return []  # Invalid book name
-                logging.debug(f"Fetching verses for book: {book_number}, chapter: {chapter}, verses: {start_verse} to {end_verse}")
-                if end_verse:
-                    query = """
-                        SELECT Book, Chapter, Versecount, verse 
-                        FROM bible 
-                        WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
-                    """
-                    params = (book_number, chapter, start_verse, end_verse)
-                else:
-                    query = """
-                        SELECT Book, Chapter, Versecount, verse 
-                        FROM bible 
-                        WHERE Book = ? AND Chapter = ? AND Versecount = ?
-                    """
-                    params = (book_number, chapter, start_verse)
-                
-                logging.debug(f"Executing query: {query} with params: {params}")
-                cursor.execute(query, params)
-                fetched_verses = cursor.fetchall()
-                logging.debug(f"Fetched verses: {fetched_verses}")
-                return fetched_verses
-
-
-            # Parse the query
-            pattern = re.compile(r'(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s(\d+):(\d+)(?:-(\d+))?')
-
-            matches = pattern.findall(query_str.capitalize())
-            logging.debug(f"Matches found: {matches}")
-            
-            if matches:
-                book_name, chapter, start_verse, end_verse = matches[0]
-                book_name = book_name.strip()
-
-                # Fetch verses for all versions
-                all_results = {}
-                for version in all_versions:
-                    db_path = os.path.join(os.path.dirname(__file__), f'bible_translations/{version}.db')
-                    conn = sqlite3.connect(db_path)
-                    cursor = conn.cursor()
-                    
-                    book_id = book_mapping.get(book_name.capitalize())
-                    if book_id is not None:
-                        end_verse = end_verse or start_verse
-                        query = """
-                            SELECT Book, Chapter, Versecount, Verse
-                            FROM bible
-                            WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
-                        """
-                        cursor.execute(query, (book_id, chapter, start_verse, end_verse))
-                        fetched_verses = cursor.fetchall()
-                        all_results[version] = fetched_verses
-                    
-                    conn.close()
-
-                # Process the results
-                current_version_results = all_results[chosen_bible]
-                for verse in current_version_results:
-                    results.append({
-                        "Book": verse[0],
-                        "Chapter": verse[1],
-                        "Verse": verse[2],
-                        "Text": verse[3]
-                    })
-
-                return jsonify({
-                    "query": query_str,
+            if bible_results[3]:  # If Bible verse found
+                logging.debug("Bible results found")
+                bible_data = {
+                    "query": bible_results[0],
                     "results": results,
                     "type": "bible",
                     "book_data": book_mapping,
-                    "bible_version": chosen_bible,
-                    "available_versions": all_versions
-                })
-
-            # for match in matches:
-            #     book_name, chapter, start_verse, end_verse = match
-            #     book_name = book_name.strip()  # Clean up any extra spaces and convert to lowercase
-            #     end_verse = end_verse or start_verse  # Use start_verse if end_verse is not specified
-
-            #     # Mapping book name to a database identifier
-            #     book_id = book_mapping.get(book_name.capitalize())
-            #     if book_id is None:
-            #         logging.error(f"Book not found: {book_name}")
-            #         continue  # Skip this match if the book is not found in the mapping
-                
-            #     # Fetching verses from the database
-            #     query = """
-            #         SELECT Book, Chapter, Versecount, Verse
-            #         FROM bible
-            #         WHERE Book = ? AND Chapter = ? AND Versecount BETWEEN ? AND ?
-            #     """
-            #     params = (book_id, chapter, start_verse, end_verse)
-            #     cursor.execute(query, params)
-            #     fetched_verses = cursor.fetchall()
-
-            #     for verse in fetched_verses:
-            #         results.append({
-            #             "Book": verse[0],
-            #             "Chapter": verse[1],
-            #             "Verse": verse[2],
-            #             "Text": verse[3]
-            #         })
-
-            # conn.close()
-            # return jsonify({"query": query_str, "results": results, "type": "bible", "book_data": book_mapping, "bible_version": chosen_bible})
+                    "bible_version": bible_results[1],
+                    "available_versions": bible_results[2]
+                }
+            logging.debug(f"query_str: {query_str}")
+            
+            return jsonify({"bible_data": bible_data, "commentary_results": commentary_results, "other_results": other_results})
+              
         else:
             # search anything else except bible (newadvent)
             with ix.searcher() as searcher:
@@ -417,7 +407,7 @@ def generate():
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "llama3:8b",
+                "model": "llama3.2",
                 "prompt": ai_prompt,
                 "stream": False
             }
