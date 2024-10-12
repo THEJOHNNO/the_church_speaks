@@ -307,47 +307,8 @@ def search():
               
         else:
             # search anything else except bible (newadvent)
-            with ix.searcher() as searcher:
-                # Split the query into terms, respecting quoted phrases
-                exact_terms = []
-                non_exact_terms = []
-
-                for term in query_str.split():
-                    if term.startswith('"') and term.endswith('"'):
-                        exact_terms.append(term.strip('"'))
-                    else:
-                        non_exact_terms.append(term)
-
-                # Create exact match queries
-                exact_queries = [Term("content", term) for term in exact_terms]
-                
-                # Create a query parser for non-exact terms
-                parser = QueryParser("content", ix.schema)
-                combined_non_exact_query = parser.parse(" ".join(non_exact_terms))
-
-                # Combine all queries
-                combined_query = Or(exact_queries + [combined_non_exact_query])
-
-                # Search for the combined query
-                hits = searcher.search(combined_query, limit=20)
-                for hit in hits:
-                    relative_path = hit['file_path']
-                    fixed_path = relative_path.replace('\\', '/')
-
-                    # Extract h1 and breadcrumb from the file
-                    with open(f'static/{fixed_path}', 'r', encoding='utf-8') as file:
-                        content = file.read()
-                        soup = BeautifulSoup(content, 'html.parser')
-                        h1 = soup.find('h1').get_text(strip=True) if soup.find('h1') else 'No title'
-                        breadcrumb = ' > '.join([crumb.get_text(strip=True) for crumb in soup.select('.breadcrumbs a')])
-
-                    results.append({
-                        "file_path": fixed_path,
-                        "content_snippet": hit.highlights("content"),
-                        "h1": h1,
-                        "breadcrumb": breadcrumb
-                    })
-
+            results = fetch_other_results(query_str)
+            
         return jsonify({"query": query_str, "results": results})
     except Exception as e:
         print(f"Error during search: {e}")

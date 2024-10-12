@@ -286,188 +286,187 @@
             },
             methods: {
                 saveToLocalStorage() {
-        localStorage.setItem('query', this.query);
-        localStorage.setItem('chatMessages', JSON.stringify(this.chatMessages));
-    },
-    clearCache() {
-        localStorage.clear();
-        window.location.reload();
-    },
+                localStorage.setItem('query', this.query);
+                localStorage.setItem('chatMessages', JSON.stringify(this.chatMessages));
+                },
+                clearCache() {
+                    localStorage.clear();
+                    window.location.reload();
+                },
                 initResize(event) {
-        event.preventDefault();
-        this.startX = event.clientX;
-        this.startY = event.clientY;
-        this.startWidth = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).width, 10);
-        this.startHeight = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).height, 10);
-        document.documentElement.addEventListener('mousemove', this.doResize, false);
-        document.documentElement.addEventListener('mouseup', this.stopResize, false);
-    },
-    scrollToBottom() {
-        this.$nextTick(() => {
-            const chatMessagesContainer = this.$refs.chatMessages;
-            if (chatMessagesContainer) {
-                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
-            }
-        });
-    },
-    doResize(event) {
-        const minWidth = 100;  // Minimum width of the container
-        const minHeight = 100; // Minimum height of the container
+                    event.preventDefault();
+                    this.startX = event.clientX;
+                    this.startY = event.clientY;
+                    this.startWidth = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).width, 10);
+                    this.startHeight = parseInt(document.defaultView.getComputedStyle(this.$refs.chatContainer).height, 10);
+                    document.documentElement.addEventListener('mousemove', this.doResize, false);
+                    document.documentElement.addEventListener('mouseup', this.stopResize, false);
+                },
+                scrollToBottom() {
+                    this.$nextTick(() => {
+                        const chatMessagesContainer = this.$refs.chatMessages;
+                        if (chatMessagesContainer) {
+                            chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+                        }
+                    });
+                },
+                doResize(event) {
+                    const minWidth = 100;  // Minimum width of the container
+                    const minHeight = 100; // Minimum height of the container
 
-        const newWidth = this.startWidth - (event.clientX - this.startX);
-        const newHeight = this.startHeight - (event.clientY - this.startY);
+                    const newWidth = this.startWidth - (event.clientX - this.startX);
+                    const newHeight = this.startHeight - (event.clientY - this.startY);
 
-        this.$refs.chatContainer.style.width = Math.max(newWidth, minWidth) + 'px';
-        this.$refs.chatContainer.style.height = Math.max(newHeight, minHeight) + 'px';
-    },
-    stopResize() {
-        document.documentElement.removeEventListener('mousemove', this.doResize, false);
-        document.documentElement.removeEventListener('mouseup', this.stopResize, false);
-    },
-    search() {
-        fetch('/search', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ query: this.query }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                console.error('Error:', data.error);
-            } else {
-                if (data.bible_data) {
-                    console.log("bible data received");
-                    this.handleBibleData(data.bible_data);
+                    this.$refs.chatContainer.style.width = Math.max(newWidth, minWidth) + 'px';
+                    this.$refs.chatContainer.style.height = Math.max(newHeight, minHeight) + 'px';
+                },
+                stopResize() {
+                    document.documentElement.removeEventListener('mousemove', this.doResize, false);
+                    document.documentElement.removeEventListener('mouseup', this.stopResize, false);
+                },
+                search() {
+                    fetch('/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ query: this.query }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error('Error:', data.error);
+                        } else {
+                            if (data.bible_data) {
+                                console.log("bible data received");
+                                this.handleBibleData(data.bible_data);
 
-                    // Handle commentary results if available
-                    if (data.commentary_results.length > 0) {
-                        console.log("commentary results received");
-                        this.commentaryResults = data.commentary_results;
+                                // Handle commentary results if available
+                                if (data.commentary_results.length > 0) {
+                                    console.log("commentary results received");
+                                    this.commentaryResults = data.commentary_results;
+                                } else {
+                                    this.commentaryResults = [];
+                                }
+                                
+                                if (data.other_results.length > 0) {
+                                    console.log("other results received");
+                                    this.otherResults = data.other_results;
+                                } else {
+                                    this.otherResults = [];
+                                }
+                            } else {
+                                // Handle non-Bible search results
+                                console.log("no bible data");
+                                this.results = data.results;
+                                this.bible.show = false;
+                                this.bible.title = '';
+                                this.bible.multiVerseContext = '';
+                                this.commentaryResults = [];
+                            }
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                },
+                handleBibleData(bibleData) {
+                    this.bible.version = bibleData.bible_version;
+                    this.availableVersions = bibleData.available_versions;
+                    this.currentVersionIndex = this.availableVersions.indexOf(bibleData.bible_version);
+
+                    if (bibleData.results.length > 1){
+                        console.log("bible longer")
+                        let book_mapping = bibleData.book_data;
+                        this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
+                        this.bible.show = true;
+                        let first = bibleData.results[0];
+                        let last = bibleData.results.slice(-1)[0];
+
+                        this.multiVerseIsTrue = true;
+
+                        if (first.Chapter != last.Chapter) {
+                            this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse} - ${this.bible.book} ${last.Chapter}:${last.Verse}`;
+                            this.firstChapterDifferent = true;
+                        } else {
+                            this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse}-${last.Verse}`;
+                            this.firstChapterDifferent = false;
+                        }
+
+                        let innerHTML = '';
+                        bibleData.results.forEach(result => {
+                            innerHTML += `<strong>${result.Verse}</strong> ${result.Text} `;
+                        });
+
+                        this.bible.multiVerseContext = innerHTML.trim();
+
                     } else {
-                        this.commentaryResults = [];
+                        this.multiVerseIsTrue = false;
+                        this.firstChapterDifferent = false;
+                        console.log("bible shorter")
+                        this.bible.title = '';
+                        this.bible.multiVerseContext = '';
+                        let book_mapping = bibleData.book_data;
+                        this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
+                        this.bible.chapter = bibleData.results[0].Chapter;
+                        this.bible.verse = bibleData.results[0].Verse;
+                        this.bible.text = bibleData.results[0].Text;
+                        this.bible.show = true;
                     }
-                    
-                    if (data.other_results.length > 0) {
-                        console.log("other results received");
-                        this.otherResults = data.other_results;
-                    } else {
-                        this.otherResults = [];
-                    }
-                } else {
-                    // Handle non-Bible search results
-                    console.log("no bible data");
-                    this.results = data.results;
-                    this.bible.show = false;
-                    this.bible.title = '';
-                    this.bible.multiVerseContext = '';
-                    this.commentaryResults = [];
-                }
-            }
-        })
-        .catch(error => console.error('Error:', error));
-    },
-    handleBibleData(bibleData) {
-        this.bible.version = bibleData.bible_version;
-        this.availableVersions = bibleData.available_versions;
-        this.currentVersionIndex = this.availableVersions.indexOf(bibleData.bible_version);
+                    this.bible.show = true;
+                },
+                openDocument(filePath) {
+                    this.iframeSrc = `/static/${filePath}`;
+                    this.showIframe = true;
+                },
+                closeIframe() {
+                    this.showIframe = false;
+                    this.iframeSrc = '';
+                },
+                highlightSearchText() {
+                    const iframe = document.querySelector('iframe');
+                    const highlightText = () => {
+                        const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        const text = this.query.toLowerCase();
 
-        if (bibleData.results.length > 1){
-            console.log("bible longer")
-            let book_mapping = bibleData.book_data;
-            this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
-            this.bible.show = true;
-            let first = bibleData.results[0];
-            let last = bibleData.results.slice(-1)[0];
+                        function highlightInParagraphs(paragraphs) {
+                            paragraphs.forEach(p => {
+                                let innerHTML = p.innerHTML;
+                                const regex = new RegExp(`(${text})`, 'gi');
+                                p.innerHTML = innerHTML.replace(regex, match => `<span class="highlight">${match}</span>`);
+                            });
+                        }
 
-            this.multiVerseIsTrue = true;
+                        const paragraphs = innerDoc.querySelectorAll('p');
+                        highlightInParagraphs(paragraphs);
+                    };
 
-            if (first.Chapter != last.Chapter) {
-                this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse} - ${this.bible.book} ${last.Chapter}:${last.Verse}`;
-                this.firstChapterDifferent = true;
-            } else {
-                this.bible.title = `${this.bible.book} ${first.Chapter}:${first.Verse}-${last.Verse}`;
-                this.firstChapterDifferent = false;
-            }
-
-            let innerHTML = '';
-            bibleData.results.forEach(result => {
-                innerHTML += `<strong>${result.Verse}</strong> ${result.Text} `;
-            });
-
-            this.bible.multiVerseContext = innerHTML.trim();
-
-        } else {
-            this.multiVerseIsTrue = false;
-            this.firstChapterDifferent = false;
-            console.log("bible shorter")
-            this.bible.title = '';
-            this.bible.multiVerseContext = '';
-            let book_mapping = bibleData.book_data;
-            this.bible.book = Object.keys(book_mapping).find(key => book_mapping[key] === bibleData.results[0].Book);
-            this.bible.chapter = bibleData.results[0].Chapter;
-            this.bible.verse = bibleData.results[0].Verse;
-            this.bible.text = bibleData.results[0].Text;
-            this.bible.show = true;
-        }
-        this.bible.show = true;
-    },
-    openDocument(filePath) {
-        this.iframeSrc = `/static/${filePath}`;
-        this.showIframe = true;
-    },
-    closeIframe() {
-        this.showIframe = false;
-        this.iframeSrc = '';
-    },
-    highlightSearchText() {
-        const iframe = document.querySelector('iframe');
-        const highlightText = () => {
-            const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
-            const text = this.query.toLowerCase();
-
-            function highlightInParagraphs(paragraphs) {
-                paragraphs.forEach(p => {
-                    let innerHTML = p.innerHTML;
-                    const regex = new RegExp(`(${text})`, 'gi');
-                    p.innerHTML = innerHTML.replace(regex, match => `<span class="highlight">${match}</span>`);
-                });
-            }
-
-            const paragraphs = innerDoc.querySelectorAll('p');
-            highlightInParagraphs(paragraphs);
-        };
-
-        setTimeout(highlightText, 100);
-    },
-    openContextModal(filePath, id) {
-        const payload = this.scripture ? { id: id, query: this.query } : { file_path: filePath, query: this.query };
-
-    fetch('/context', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            console.error('Error:', data.error);
-        } else {
-            this.contexts = data.contexts;
-            this.currentContextIndex = 0;
-            this.currentBreadcrumbText = data.breadcrumb_text;
-            this.currentH1Text = data.h1_text;
-            this.aiResponse = ''; // Reset AI response
-            this.contextFilePath = filePath; // Set the file path or id for AI questions
-            this.showContextModal = true;
-        }
-    })
-    .catch(error => console.error('Error:', error));
-},
-closeContextModal() {
+                    setTimeout(highlightText, 100);
+                },
+                openContextModal(filePath, id) {
+                    const payload = this.scripture ? { id: id, query: this.query } : { file_path: filePath, query: this.query };
+                    fetch('/context', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            console.error('Error:', data.error);
+                        } else {
+                            this.contexts = data.contexts;
+                            this.currentContextIndex = 0;
+                            this.currentBreadcrumbText = data.breadcrumb_text;
+                            this.currentH1Text = data.h1_text;
+                            this.aiResponse = ''; // Reset AI response
+                            this.contextFilePath = filePath; // Set the file path or id for AI questions
+                            this.showContextModal = true;
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                },
+                closeContextModal() {
                     this.showContextModal = false;
                     this.contexts = [];
                     this.currentContextIndex = 0;
@@ -540,65 +539,65 @@ closeContextModal() {
                 },
 
 
-toggleChat() {
+                toggleChat() {
                     this.chatMinimized = !this.chatMinimized;
                 },
                 askAI() {
-    const question = this.aiQuestion.trim();
-    if (question) {
-        this.isLoading = true; // Start loading
-        fetch('/ask_ai', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                file_path: this.contextFilePath,
-                question
-            }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            this.isLoading = false; // Stop loading
-            if (data.error) {
-                console.error('Error:', data.error);
-            } else {
-                this.aiResponse = data.response;
-                this.chatMessages.push({ id: Date.now(), text: `Q: ${question}`, isUser: true });
-                this.chatMessages.push({ id: Date.now() + 1, text: `A: ${this.aiResponse}`, isUser: false });
-            }
-        })
-        .catch(error => {
-            this.isLoading = false; // Stop loading
-            console.error('Error:', error);
-        });
-    }
-},
-nextVersion() {
-    this.currentVersionIndex = (this.currentVersionIndex + 1) % this.availableVersions.length;
-    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
-},
-previousVersion() {
-    this.currentVersionIndex = (this.currentVersionIndex - 1 + this.availableVersions.length) % this.availableVersions.length;
-    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
-},
-switchVersion(version) {
-    const currentQuery = this.query.replace(/\b(kjv|esv|amp|bsb|gen|nasb)\b/gi, '').trim();
-    this.query = `${currentQuery} ${version}`;
-    this.search();
-}
+                    const question = this.aiQuestion.trim();
+                    if (question) {
+                        this.isLoading = true; // Start loading
+                        fetch('/ask_ai', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                file_path: this.contextFilePath,
+                                question
+                            }),
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            this.isLoading = false; // Stop loading
+                            if (data.error) {
+                                console.error('Error:', data.error);
+                            } else {
+                                this.aiResponse = data.response;
+                                this.chatMessages.push({ id: Date.now(), text: `Q: ${question}`, isUser: true });
+                                this.chatMessages.push({ id: Date.now() + 1, text: `A: ${this.aiResponse}`, isUser: false });
+                            }
+                        })
+                        .catch(error => {
+                            this.isLoading = false; // Stop loading
+                            console.error('Error:', error);
+                        });
+                    }
+                },
+                nextVersion() {
+                    this.currentVersionIndex = (this.currentVersionIndex + 1) % this.availableVersions.length;
+                    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
+                },
+                previousVersion() {
+                    this.currentVersionIndex = (this.currentVersionIndex - 1 + this.availableVersions.length) % this.availableVersions.length;
+                    this.switchVersion(this.availableVersions[this.currentVersionIndex]);
+                },
+                switchVersion(version) {
+                    const currentQuery = this.query.replace(/\b(kjv|esv|amp|bsb|gen|nasb)\b/gi, '').trim();
+                    this.query = `${currentQuery} ${version}`;
+                    this.search();
+                }
 
 
             },
             mounted() {
-    if (localStorage.getItem('query')) {
-        this.query = localStorage.getItem('query');
-    }
-    if (localStorage.getItem('chatMessages')) {
-        this.chatMessages = JSON.parse(localStorage.getItem('chatMessages'));
-    }
-    this.scrollToBottom();
-},
+                if (localStorage.getItem('query')) {
+                    this.query = localStorage.getItem('query');
+                }
+                if (localStorage.getItem('chatMessages')) {
+                    this.chatMessages = JSON.parse(localStorage.getItem('chatMessages'));
+                }
+                this.scrollToBottom();
+            },
             watch: {
                 query() {
                     if (this.query.includes(':')) {
@@ -609,12 +608,12 @@ switchVersion(version) {
                     this.saveToLocalStorage();
                 },
                 chatMessages: {
-        handler() {
-            this.saveToLocalStorage();
-            this.scrollToBottom();
-        },
-        deep: true
-    }
+                    handler() {
+                        this.saveToLocalStorage();
+                        this.scrollToBottom();
+                    },
+                    deep: true
+                }
             }
         });
     </script>
