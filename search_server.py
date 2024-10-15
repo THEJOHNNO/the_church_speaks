@@ -20,77 +20,9 @@ DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'commentaries.sqlite')
 BIBLE_DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'bible_translations/ESV.db')
 IX_PATH = "indexdir"
 ix = open_dir(IX_PATH)
-
-# Book name to ID mapping (case-insensitive)
-# Create a case-insensitive book mapping
-book_mapping = {
-    "Genesis": 0,
-    "Exodus": 1,
-    "Leviticus": 2,
-    "Numbers": 3,
-    "Deuteronomy": 4,
-    "Joshua": 5,
-    "Judges": 6,
-    "Ruth": 7,
-    "1 Samuel": 8,
-    "2 Samuel": 9,
-    "1 Kings": 10,
-    "2 Kings": 11,
-    "1 Chronicles": 12,
-    "2 Chronicles": 13,
-    "Ezra": 14,
-    "Nehemiah": 15,
-    "Esther": 16,
-    "Job": 17,
-    "Psalms": 18,
-    "Proverbs": 19,
-    "Ecclesiastes": 20,
-    "Song of Solomon": 21,
-    "Isaiah": 22,
-    "Jeremiah": 23,
-    "Lamentations": 24,
-    "Ezekiel": 25,
-    "Daniel": 26,
-    "Hosea": 27,
-    "Joel": 28,
-    "Amos": 29,
-    "Obadiah": 30,
-    "Jonah": 31,
-    "Micah": 32,
-    "Nahum": 33,
-    "Habakkuk": 34,
-    "Zephaniah": 35,
-    "Haggai": 36,
-    "Zechariah": 37,
-    "Malachi": 38,
-    "Matthew": 39,
-    "Mark": 40,
-    "Luke": 41,
-    "John": 42,
-    "Acts": 43,
-    "Romans": 44,
-    "1 Corinthians": 45,
-    "2 Corinthians": 46,
-    "Galatians": 47,
-    "Ephesians": 48,
-    "Philippians": 49,
-    "Colossians": 50,
-    "1 Thessalonians": 51,
-    "2 Thessalonians": 52,
-    "1 Timothy": 53,
-    "2 Timothy": 54,
-    "Titus": 55,
-    "Philemon": 56,
-    "Hebrews": 57,
-    "James": 58,
-    "1 Peter": 59,
-    "2 Peter": 60,
-    "1 John": 61,
-    "2 John": 62,
-    "3 John": 63,
-    "Jude": 64,
-    "Revelation": 65
-}
+BOOK_MAPPING_PATH = os.path.join(os.path.dirname(__file__), 'book_mapping.json')
+book_mapping = json.load(open(BOOK_MAPPING_PATH))
+BOOK_SHORTCUTS = {book[:3].lower(): book for book in book_mapping.keys()}
 
 @app.route('/')
 def home():
@@ -135,15 +67,19 @@ def fetch_bible_verses(query, conn, book_mapping, results):
             break
         
     cursor = conn.cursor()
-    pattern = re.compile(r'(\d?\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s(\d+):(\d+)(?:-(\d+))?')
+    pattern = re.compile(r'(\d?\s*[A-Za-z]{3,}(?:\s+[A-Za-z]+)*)\s(\d+):(\d+)(?:-(\d+))?')
 
-    matches = pattern.findall(query.capitalize())
+    matches = pattern.findall(query)
     logging.debug(f"Matches found: {matches}")
     
     if matches:
         match_found = True
         book_name, chapter, start_verse, end_verse = matches[0]
         book_name = book_name.strip()
+
+        # Check if the book_name is a shortcut
+        if len(book_name) == 3:
+            book_name = BOOK_SHORTCUTS.get(book_name, book_name)
 
         # Fetch verses for all versions
         all_results = {}
